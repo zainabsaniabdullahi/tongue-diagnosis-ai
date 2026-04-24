@@ -33,55 +33,53 @@ CLASS_INFO = {
                       "severity":"Low"}
 }
 
+# Use CPU only — free tier has no GPU
 DEVICE = torch.device("cpu")
 
+# Simpler transform — faster processing
 transform = transforms.Compose([
-    transforms.Resize((224,224)),
+    transforms.Resize((224, 224)),
     transforms.ToTensor(),
-    transforms.Normalize([0.485,0.456,0.406],
-                         [0.229,0.224,0.225])
+    transforms.Normalize(
+        [0.485, 0.456, 0.406],
+        [0.229, 0.224, 0.225]
+    )
 ])
 
-def load_model():
-    m = models.efficientnet_b0(weights=None)
-    f = m.classifier[1].in_features
-    m.classifier = nn.Sequential(
-        nn.Dropout(0.3,inplace=True),
-        nn.Linear(f,256), nn.ReLU(),
-        nn.Dropout(0.2), nn.Linear(256,4))
-    m.load_state_dict(torch.load(
-        "best_model.pth", map_location=DEVICE))
-    return m.to(DEVICE).eval()
+# Load model once at startup
+print("Loading model...")
+model = None
 
-model   = load_model()
-print(f"Model loaded on {DEVICE}")
+def get_model():
+    global model
+    if model is None:
+        m = models.efficientnet_b0(weights=None)
+        f = m.classifier[1].in_features
+        m.classifier = nn.Sequential(
+            nn.Dropout(0.3, inplace=True),
+            nn.Linear(f, 256),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, 4)
+        )
+        m.load_state_dict(
+            torch.load("best_model.pth",
+                       map_location=DEVICE,
+                       weights_only=True)
+        )
+        m.eval()
+        model = m
+        print("Model loaded successfully!")
+    return model
 
-class GradCAM:
-    def __init__(self,model,layer):
-        self.model=model; self.g=self.a=None
-        layer.register_forward_hook(
-            lambda m,i,o:setattr(self,"a",o.detach()))
-        layer.register_full_backward_hook(
-            lambda m,gi,go:setattr(self,"g",go[0].detach()))
-    def generate(self,t,idx=None):
-        self.g=self.a=None; o=self.model(t)
-        if idx is None: idx=o.argmax(1).item()
-        self.model.zero_grad(); o[0,idx].backward()
-        if self.g is None: return np.zeros((7,7)),idx
-        w=self.g.mean(dim=[2,3],keepdim=True)
-        c=torch.relu((w*self.a).sum(1,keepdim=True))
-        c=c.squeeze().cpu().numpy()
-        if c.ndim==0: c=np.zeros((7,7))
-        c-=c.min()
-        if c.max()>0: c/=c.max()
-        return c,idx
+# Load at startup
+get_model()
 
-gradcam = GradCAM(model,model.features[-1][0])
-
-def b64(a):
-    i=Image.fromarray((a*255).astype(np.uint8))
-    b=io.BytesIO(); i.save(b,"PNG")
-    return base64.b64encode(b.getvalue()).decode()
+def b64(arr):
+    img = Image.fromarray((arr * 255).astype(np.uint8))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return base64.b64encode(buf.getvalue()).decode()
 
 @app.get("/", response_class=HTMLResponse)
 def home():
@@ -90,45 +88,107 @@ def home():
 
 @app.get("/health")
 def health():
-    return {"status":"healthy","model":"EfficientNet-B0",
-            "accuracy":"90.18%","classes":CLASS_NAMES}
+    return {
+        "status"  : "healthy",
+        "model"   : "EfficientNet-B0",
+        "accuracy": "90.18%",
+        "classes" : CLASS_NAMES
+    }
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
     try:
-        img  = Image.open(
-            io.BytesIO(await file.read())).convert("RGB")
-        ir   = img.resize((224,224))
-        t    = transform(img).unsqueeze(0).to(DEVICE)
-        with torch.no_grad():
-            o=model(t); p=torch.softmax(o,1)
-            c,pi=torch.max(p,1)
-        pred = CLASS_NAMES[pi.item()]
-        ap   = {n:round(p[0][i].item()*100,2)
-                for i,n in enumerate(CLASS_NAMES)}
-        t2   = transform(img).unsqueeze(0).to(DEVICE)
-        t2.requires_grad_(True)
-        cam,_= gradcam.generate(t2,pi.item())
-        cr   = np.array(Image.fromarray(
-            np.uint8(cam*255)).resize((224,224)))/255.0
-        orig = np.array(ir)/255.0
-        heat = plt.cm.jet(cr)[:,:,:3]
-        over = np.clip(0.5*orig+0.5*heat,0,1)
-        info = CLASS_INFO.get(pred,{})
-        return JSONResponse({
-            "success"          :True,
-            "predicted_class"  :pred,
-            "confidence"       :round(c.item()*100,2),
-            "all_probabilities":ap,
-            "description"      :info.get("description",""),
-            "recommendation"   :info.get("recommendation",""),
-            "severity"         :info.get("severity",""),
-            "original_image"   :b64(orig),
-            "gradcam_overlay"  :b64(over)})
-    except Exception as e:
-        return JSONResponse(status_code=500,
-            content={"success":False,"error":str(e)})
+        # Read and resize image
+        content    = await file.read()
+        img        = Image.open(
+            io.BytesIO(content)).convert("RGB")
+        img_small  = img.resize((224, 224))
 
-if __name__=="__main__":
+        # Run prediction
+        m      = get_model()
+        tensor = transform(img).unsqueeze(0).to(DEVICE)
+
+        with torch.no_grad():
+            output = m(tensor)
+            probs  = torch.softmax(output, dim=1)
+            conf, pred_idx = torch.max(probs, 1)
+
+        pred       = CLASS_NAMES[pred_idx.item()]
+        confidence = round(conf.item() * 100, 2)
+        all_probs  = {
+            name: round(probs[0][i].item() * 100, 2)
+            for i, name in enumerate(CLASS_NAMES)
+        }
+
+        # Simple Grad-CAM
+        tensor2 = transform(img).unsqueeze(0).to(DEVICE)
+        tensor2.requires_grad_(True)
+
+        activations = []
+        gradients   = []
+
+        def fwd_hook(m, i, o):
+            activations.append(o.detach())
+
+        def bwd_hook(m, gi, go):
+            gradients.append(go[0].detach())
+
+        layer = m.features[-1][0]
+        h1    = layer.register_forward_hook(fwd_hook)
+        h2    = layer.register_full_backward_hook(bwd_hook)
+
+        out = m(tensor2)
+        m.zero_grad()
+        out[0, pred_idx.item()].backward()
+
+        h1.remove()
+        h2.remove()
+
+        if gradients and activations:
+            w   = gradients[0].mean(dim=[2,3], keepdim=True)
+            cam = torch.relu(
+                (w * activations[0]).sum(1, keepdim=True)
+            ).squeeze().cpu().numpy()
+            if cam.ndim == 0:
+                cam = np.zeros((7,7))
+            cam -= cam.min()
+            if cam.max() > 0:
+                cam /= cam.max()
+        else:
+            cam = np.zeros((7,7))
+
+        # Create overlay
+        cam_r = np.array(
+            Image.fromarray(
+                np.uint8(cam * 255)
+            ).resize((224, 224))
+        ) / 255.0
+
+        orig    = np.array(img_small) / 255.0
+        heatmap = plt.cm.jet(cam_r)[:,:,:3]
+        overlay = np.clip(0.5*orig + 0.5*heatmap, 0, 1)
+
+        info = CLASS_INFO.get(pred, {})
+
+        return JSONResponse({
+            "success"          : True,
+            "predicted_class"  : pred,
+            "confidence"       : confidence,
+            "all_probabilities": all_probs,
+            "description"      : info.get("description",""),
+            "recommendation"   : info.get("recommendation",""),
+            "severity"         : info.get("severity",""),
+            "original_image"   : b64(orig),
+            "gradcam_overlay"  : b64(overlay)
+        })
+
+    except Exception as e:
+        print(f"Prediction error: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
+if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
