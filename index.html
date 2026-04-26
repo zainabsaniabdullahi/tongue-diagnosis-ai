@@ -1,1 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Tongue Diagnosis AI System</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:#F0F4F8;color:#1E293B;min-height:100vh}
+header{background:linear-gradient(135deg,#0D1B2A,#1B6CA8);color:white;padding:20px 40px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 20px rgba(0,0,0,0.3);position:sticky;top:0;z-index:100}
+.hdr-left h1{font-size:20px;font-weight:700}
+.hdr-left p{font-size:11px;opacity:.6;margin-top:2px;letter-spacing:.5px}
+.badge{background:#E9A623;color:#0D1B2A;padding:6px 16px;border-radius:20px;font-size:12px;font-weight:700}
+.container{max-width:1100px;margin:32px auto;padding:0 24px}
+.disclaimer{background:#FFFBEB;border:1px solid #FDE68A;border-left:4px solid #D97706;border-radius:8px;padding:13px 16px;font-size:13px;color:#92400E;margin-bottom:26px}
+.wake-banner{background:#EFF6FF;border:1px solid #BFDBFE;border-left:4px solid #3B82F6;border-radius:8px;padding:13px 16px;font-size:13px;color:#1E40AF;margin-bottom:26px;display:none}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+@media(max-width:768px){.grid{grid-template-columns:1fr};header{padding:16px 20px}}
+.card{background:white;border-radius:14px;padding:26px;box-shadow:0 1px 3px rgba(0,0,0,.05),0 4px 16px rgba(0,0,0,.05);border:1px solid #E2E8F0}
+.card-title{font-size:15px;font-weight:600;color:#0F172A;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;gap:8px}
+.upload-zone{border:2px dashed #CBD5E1;border-radius:10px;padding:36px 20px;text-align:center;cursor:pointer;background:#FAFBFC;transition:all .2s}
+.upload-zone:hover,.upload-zone.active{border-color:#0E7C6B;background:#F0FDFB;border-style:solid}
+.upload-emoji{font-size:42px;margin-bottom:10px}
+.upload-zone h3{font-size:14px;font-weight:600;color:#0F172A;margin-bottom:5px}
+.upload-zone p{font-size:12px;color:#94A3B8;margin-top:3px}
+#preview-img{max-width:100%;max-height:190px;border-radius:8px;margin-top:14px;display:none;border:2px solid #0E7C6B}
+#file-input{display:none}
+.btn{width:100%;padding:13px;background:linear-gradient(135deg,#0E7C6B,#065F52);color:white;border:none;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;margin-top:14px;transition:all .2s;font-family:'Inter',sans-serif;letter-spacing:.3px}
+.btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(14,124,107,.3)}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
+.tip-group{margin-bottom:14px}
+.tip-group h4{font-size:12px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
+.tip{display:flex;align-items:flex-start;gap:8px;margin-bottom:7px;font-size:13px;color:#475569;line-height:1.4}
+.dot{width:7px;height:7px;border-radius:50%;margin-top:4px;flex-shrink:0}
+.loading{display:none;text-align:center;padding:48px;background:white;border-radius:14px;border:1px solid #E2E8F0;margin-top:22px;box-shadow:0 4px 16px rgba(0,0,0,.05)}
+.spinner{width:46px;height:46px;border:3px solid #F1F5F9;border-top-color:#0E7C6B;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-msg{font-size:13px;color:#64748B;margin-top:8px}
+.result{display:none;margin-top:22px}
+.res-header{background:linear-gradient(135deg,#0D1B2A,#1B4F72);border-radius:14px 14px 0 0;padding:22px 26px;display:flex;align-items:center;justify-content:space-between}
+.res-name{font-size:26px;font-weight:700;color:white;text-transform:capitalize;letter-spacing:-.3px}
+.res-sub{font-size:11px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.8px;margin-bottom:3px}
+.sev{padding:5px 14px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.5px}
+.sev-normal{background:rgba(16,185,129,.15);color:#34D399}
+.sev-low{background:rgba(59,130,246,.15);color:#60A5FA}
+.sev-moderate{background:rgba(245,158,11,.15);color:#FCD34D}
+.sev-high{background:rgba(239,68,68,.15);color:#F87171}
+.res-body{background:white;border:1px solid #E2E8F0;border-top:none;border-radius:0 0 14px 14px;padding:26px}
+.res-grid{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+@media(max-width:768px){.res-grid{grid-template-columns:1fr}}
+.section-label{font-size:10px;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+.conf-row{display:flex;justify-content:space-between;font-size:13px;margin-bottom:7px}
+.conf-val{font-weight:700;color:#0E7C6B}
+.conf-bar{height:8px;background:#F1F5F9;border-radius:4px;overflow:hidden;margin-bottom:18px}
+.conf-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#0E7C6B,#12A589);transition:width 1s cubic-bezier(.4,0,.2,1)}
+.prob-row{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+.prob-lbl{width:116px;font-size:11px;color:#64748B}
+.prob-track{flex:1;height:6px;background:#F8FAFC;border-radius:3px;overflow:hidden}
+.prob-fill{height:100%;border-radius:3px;background:#0E7C6B;transition:width 1s ease}
+.prob-val{width:36px;text-align:right;font-size:11px;font-weight:600;color:#1E293B}
+.info-box{background:#F8FAFC;border-radius:8px;padding:13px 15px;margin-top:12px;border-left:3px solid #0E7C6B}
+.info-box.gold{border-left-color:#D97706}
+.info-box h5{font-size:10px;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.8px;margin-bottom:5px}
+.info-box p{font-size:13px;color:#334155;line-height:1.6}
+.img-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.img-card{text-align:center}
+.img-card img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:9px;border:1px solid #E2E8F0}
+.img-card p{font-size:11px;color:#94A3B8;margin-top:5px;font-weight:500}
+.grad-note{margin-top:14px;padding:11px 13px;background:#F8FAFC;border-radius:7px;font-size:12px;color:#64748B;line-height:1.6}
+footer{text-align:center;padding:26px;font-size:12px;color:#94A3B8;border-top:1px solid #E2E8F0;background:white;margin-top:40px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hdr-left">
+    <h1>👅 Tongue Diagnosis AI System</h1>
+    <p>ANALYSIS OF DISEASE USING TONGUE IMAGES — SHARDA UNIVERSITY</p>
+  </div>
+  <span class="badge">EfficientNet-B0 · 90.18%</span>
+</header>
+
+<div class="container">
+
+  <!-- Wake up banner -->
+  <div class="wake-banner" id="wake-banner">
+    ⏳ <strong>Server is starting up</strong> — Please wait
+    20 to 30 seconds and try again. This only happens once
+    after a period of inactivity.
+  </div>
+
+  <!-- Disclaimer -->
+  <div class="disclaimer">
+    ⚠️ <strong>Medical Disclaimer:</strong> This system is
+    a research tool for non-invasive health screening only.
+    Results are NOT a clinical diagnosis. Always consult a
+    qualified medical professional for any health concerns.
+  </div>
+
+  <div class="grid">
+
+    <!-- Upload card -->
+    <div class="card">
+      <div class="card-title">📸 Upload Tongue Image</div>
+      <div class="upload-zone" id="upload-zone"
+           onclick="document.getElementById('file-input').click()"
+           ondragover="event.preventDefault();
+                       this.classList.add('active')"
+           ondragleave="this.classList.remove('active')"
+           ondrop="handleDrop(event)">
+        <div class="upload-emoji">👅</div>
+        <h3>Click to upload tongue image</h3>
+        <p>or drag and drop here</p>
+        <p>JPG · PNG · JPEG supported</p>
+        <img id="preview-img" alt="Preview"/>
+      </div>
+      <input type="file" id="file-input"
+             accept="image/*" onchange="handleFile(event)"/>
+      <button class="btn" id="btn-analyse"
+              onclick="analyseImage()" disabled>
+        Analyse Tongue Image
+      </button>
+    </div>
+
+    <!-- Guidelines card -->
+    <div class="card">
+      <div class="card-title">📋 Photo Guidelines</div>
+      <div class="tip-group">
+        <h4>✅ For best results</h4>
+        <div class="tip">
+          <span class="dot" style="background:#10B981"></span>
+          Take photo in the morning before eating or drinking
+        </div>
+        <div class="tip">
+          <span class="dot" style="background:#10B981"></span>
+          Use natural daylight or white LED light
+        </div>
+        <div class="tip">
+          <span class="dot" style="background:#10B981"></span>
+          Stick tongue out fully, flat and relaxed
+        </div>
+        <div class="tip">
+          <span class="dot" style="background:#10B981"></span>
+          Keep camera 20 to 30 cm from face
+        </div>
+        <div class="tip">
+          <span class="dot" style="background:#10B981"></span>
+          Use the rear camera of your smartphone
+        </div>
+      </div>
+      <div class="tip-group">
+        <h4>❌ Avoid</h4>
+        <div class="tip">
+          <span class="dot" style="background:#EF4444"></span>
+          Flash photography — changes tongue colour
+        </div>
+        <div class="tip">
+          <span class="dot" style="background:#EF4444"></span>
+          Yellow or warm light bulbs
+        </div>
+        <div class="tip">
+          <span class="dot" style="background:#EF4444"></span>
+          Taking photo after eating or drinking coffee
+        </div>
+        <div class="tip">
+          <span class="dot" style="background:#EF4444"></span>
+          Blurry or motion-affected images
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <p style="font-weight:600;font-size:15px;color:#0F172A">
+      Analysing tongue image...
+    </p>
+    <p class="loading-msg" id="loading-msg">
+      Running EfficientNet-B0 deep learning classification
+    </p>
+  </div>
+
+  <!-- Result -->
+  <div class="result" id="result">
+    <div class="res-header">
+      <div>
+        <div class="res-sub">Diagnosis Result</div>
+        <div class="res-name" id="res-class">—</div>
+      </div>
+      <span class="sev" id="res-sev"></span>
+    </div>
+    <div class="res-body">
+      <div class="res-grid">
+        <div>
+          <div class="section-label">Confidence Score</div>
+          <div class="conf-row">
+            <span style="font-weight:500;font-size:13px">
+              Model confidence
+            </span>
+            <span class="conf-val" id="res-conf">—</span>
+          </div>
+          <div class="conf-bar">
+            <div class="conf-fill" id="conf-fill"
+                 style="width:0%"></div>
+          </div>
+          <div class="section-label">
+            Class Probabilities
+          </div>
+          <div id="prob-bars"></div>
+          <div class="info-box">
+            <h5>Clinical Finding</h5>
+            <p id="res-desc">—</p>
+          </div>
+          <div class="info-box gold">
+            <h5>Recommendation</h5>
+            <p id="res-rec">—</p>
+          </div>
+        </div>
+        <div>
+          <div class="section-label">Visual Analysis</div>
+          <div class="img-pair">
+            <div class="img-card">
+              <img id="res-orig" src="" alt="Original"/>
+              <p>Original Image</p>
+            </div>
+            <div class="img-card">
+              <img id="res-grad" src="" alt="Grad-CAM"/>
+              <p>Grad-CAM Heatmap</p>
+            </div>
+          </div>
+          <div class="grad-note">
+            <strong style="color:#334155">
+              About Grad-CAM:
+            </strong>
+            The heatmap highlights which regions of the
+            tongue the AI focused on when making its
+            prediction. Brighter areas indicate higher
+            model attention.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  Analysis of Disease Using Tongue Images &nbsp;·&nbsp;
+  Sharda University &nbsp;·&nbsp;
+  Dept. of Computer Science &amp; Application &nbsp;·&nbsp;
+  MCA/MSc Research Project 2025–2026
+</footer>
+
+<script>
+let selectedFile = null;
+let serverReady  = false;
+
+// ── Wake up server when page loads ───────────────────────────
+window.addEventListener('load', () => {
+  checkServer();
+});
+
+function checkServer() {
+  fetch('/ping', { method: 'GET' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.message === 'pong') {
+        serverReady = true;
+        document.getElementById('wake-banner')
+                .style.display = 'none';
+        console.log('Server is ready!');
+      }
+    })
+    .catch(() => {
+      // Server sleeping — show banner
+      document.getElementById('wake-banner')
+              .style.display = 'block';
+      // Retry every 5 seconds
+      setTimeout(checkServer, 5000);
+    });
+}
+
+// ── File handling ─────────────────────────────────────────────
+function handleFile(e) {
+  const file = e.target.files[0];
+  if (file) loadFile(file);
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone')
+          .classList.remove('active');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/'))
+    loadFile(file);
+}
+
+function loadFile(file) {
+  selectedFile = file;
+  const r = new FileReader();
+  r.onload = (ev) => {
+    const img = document.getElementById('preview-img');
+    img.src = ev.target.result;
+    img.style.display = 'block';
+    document.getElementById('upload-zone')
+            .classList.add('active');
+    document.getElementById('btn-analyse')
+            .disabled = false;
+  };
+  r.readAsDataURL(file);
+}
+
+// ── Main analyse function ─────────────────────────────────────
 async function analyseImage() {
+  if (!selectedFile) return;
+
+  // Show loading
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('result').style.display  = 'none';
+  document.getElementById('btn-analyse').disabled  = true;
+  document.getElementById('loading-msg').textContent =
+    'Running EfficientNet-B0 deep learning classification...';
+
+  const fd = new FormData();
+  fd.append('file', selectedFile);
+
+  try {
+    // Update message after 10 seconds
+    const msgTimer = setTimeout(() => {
+      document.getElementById('loading-msg').textContent =
+        'Processing image — please wait, this may take up to 30 seconds...';
+    }, 10000);
+
+    const res = await fetch('/predict', {
+      method : 'POST',
+      body   : fd,
+      signal : AbortSignal.timeout(120000)
+    });
+
+    clearTimeout(msgTimer);
+
+    // Check if response is OK
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error('Server error: ' + errText);
+    }
+
+    const data = await res.json();
+    document.getElementById('loading').style.display = 'none';
+
+    if (data.success) {
+      showResult(data);
+    } else {
+      alert('Prediction failed: ' + data.error);
+    }
+
+  } catch(err) {
+    document.getElementById('loading').style.display = 'none';
+
+    if (err.name === 'TimeoutError') {
+      document.getElementById('wake-banner')
+              .style.display = 'block';
+      alert(
+        'The server took too long to respond.\n\n' +
+        'The server may have been sleeping.\n' +
+        'Please wait 30 seconds and try again.\n\n' +
+        'Tip: Visit /ping first to wake the server!'
+      );
+    } else {
+      document.getElementById('wake-banner')
+              .style.display = 'block';
+      alert(
+        'Could not connect to server.\n\n' +
+        'Please:\n' +
+        '1. Wait 30 seconds\n' +
+        '2. Click Analyse again\n\n' +
+        'Error: ' + err.message
+      );
+    }
+  }
+
+  document.getElementById('btn-analyse').disabled = false;
+}
+
+// ── Severity class ────────────────────────────────────────────
+function getSev(s) {
+  s = s.toLowerCase();
+  if (s.includes('high'))     return 'sev-high';
+  if (s.includes('moderate')) return 'sev-moderate';
+  if (s.includes('low'))      return 'sev-low';
+  return 'sev-normal';
+}
+
+// ── Show result ───────────────────────────────────────────────
+function showResult(d) {
+  document.getElementById('res-class').textContent =
+    d.predicted_class.replace(/_/g, ' ');
+
+  const sev = document.getElementById('res-sev');
+  sev.textContent = d.severity;
+  sev.className   = 'sev ' + getSev(d.severity);
+
+  document.getElementById('res-conf').textContent =
+    d.confidence + '%';
+  document.getElementById('conf-fill').style.width =
+    d.confidence + '%';
+  document.getElementById('res-desc').textContent =
+    d.description;
+  document.getElementById('res-rec').textContent =
+    d.recommendation;
+
+  // Probability bars
+  const pb = document.getElementById('prob-bars');
+  pb.innerHTML = '';
+  for (const [cls, prob] of
+       Object.entries(d.all_probabilities)) {
+    pb.innerHTML += `
+      <div class="prob-row">
+        <span class="prob-lbl">
+          ${cls.replace(/_/g, ' ')}
+        </span>
+        <div class="prob-track">
+          <div class="prob-fill"
+               style="width:${prob}%"></div>
+        </div>
+        <span class="prob-val">${prob}%</span>
+      </div>`;
+  }
+
+  // Images
+  if (d.original_image)
+    document.getElementById('res-orig').src =
+      'data:image/png;base64,' + d.original_image;
+  if (d.gradcam_overlay)
+    document.getElementById('res-grad').src =
+      'data:image/png;base64,' + d.gradcam_overlay;
+
+  document.getElementById('result').style.display = 'block';
+  document.getElementById('result')
+          .scrollIntoView({ behavior: 'smooth' });
+}
+</script>
+</body>
+</html>
